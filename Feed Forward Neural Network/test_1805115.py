@@ -110,7 +110,7 @@ class Model:
         # Calculate the loss
         data_loss = self.loss_activation.forward(self.output, y)
         # Get test accuracy
-        predictions = np.argmax(self.output, axis=1)
+        predictions = np.argmax(self.loss_activation.output, axis=1)
         if len(y.shape) == 2:
             y = np.argmax(y, axis=1)
         accuracy = np.mean(predictions == y)

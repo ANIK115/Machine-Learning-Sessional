@@ -679,9 +679,10 @@ for model_numbers in range(12):
         layers = pickle.load(f)
     
     model = Model()
-    model.create_model(layers, None)
+    model.create_model(layers, Activation_Softmax_Loss_CategoricalCrossentropy(), None)
     model.forward(X_validation.copy(), type='validation')
-    validation_predictions = np.argmax(model.output, axis=1)
+    validation_loss = model.loss_activation.forward(model.output, y_validation)
+    validation_predictions = np.argmax(model.loss_activation.output, axis=1)
     if len(y_validation.shape) == 2:
         y_validation = np.argmax(y_validation, axis=1)
     validation_accuracy = np.mean(validation_predictions == y_validation)
