@@ -117,16 +117,16 @@ class Model:
         f1_macro_score = f1_score(y, predictions, average='macro')
         return accuracy, f1_macro_score, data_loss, predictions
 
+import pickle
 
-independent_test_dataset = ds.EMNIST(root='./data', split='letters',
-                             train=False,
-                             transform=transforms.ToTensor())
+with open('ids7.pickle', 'rb') as ids7:
+  independent_test_dataset = pickle.load(ids7)
 
 model = Model()
 layers = []
 # Load the model
 import pickle
-with open('outputs/model_1805115.pickle', 'rb') as f:
+with open('model_1805115.pickle', 'rb') as f:
     layers = pickle.load(f)
 
 model.create_model(layers)
@@ -147,7 +147,7 @@ y_test = y_test - 1
 
 accuracy, f1_macro_score, loss, predictions = model.test(X_test, y_test)
 
-with open("outputs/TestResult2.txt", "a") as f:
+with open("TestResult-Final.txt", "w") as f:
     f.write("Test Accuracy: " + str(accuracy) + " ")
     f.write("Test F1 Score: " + str(f1_macro_score) + " ")
     f.write("Test Loss:" + str(loss) + "\n")
@@ -169,7 +169,7 @@ for i in range(confusion_matrix.shape[0]):
 # write the results in a tabular form where each row represents a class labeled from 0 to 25
 # each column represents the TP, TN, FP, FN for each class
 
-with open("outputs/TestResult2.txt", "a") as f:
+with open("TestResult-Final.txt", "a") as f:
     #write the TP, TN, FP, FN for each class
     f.write("label\t\t TP:\t\t TN:\t\t FP:\t\t FN:\n")
     for i in range(confusion_matrix.shape[0]):
