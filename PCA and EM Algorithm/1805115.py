@@ -4,6 +4,9 @@ import pandas as pd
 
 from scipy.stats import multivariate_normal
 
+#apply seed
+np.random.seed(42)
+
 def gaussian(x, mean, cov):
     return multivariate_normal.pdf(x, mean=mean, cov=cov)
 
@@ -24,18 +27,18 @@ def maximization(data, k, probabilities):
     pi = np.zeros(k)
     mu = np.zeros((k, num_of_cols))
     sigma = np.zeros((k, num_of_cols, num_of_cols))
-
+    epsilon = 1e-6 
     for j in range(k):
         nij = np.sum(probabilities[:, j])
+        mu[j, :] = np.sum(data * probabilities[:, j, np.newaxis], axis=0) / nij
         for i in range(num_of_rows):
-            mu[j, :] += probabilities[i, j] * data[i, :]
-        mu[j, :] /= nij
-
-        for i in range(num_of_rows):
-            sigma[j, :] += probabilities[i, j] * np.dot(np.transpose([data[i, :] - mu[j, :]]), [data[i, :] - mu[j, :]])
-        sigma[j, :] /= nij
+            diff = (data[i, :] - mu[j, :]).reshape(-1, 1)
+            sigma[j] += probabilities[i, j] * np.dot(diff, diff.T)
+        sigma[j] /= nij
+        sigma[j] += np.eye(num_of_cols) * epsilon
         pi[j] = nij / num_of_rows
     return pi, mu, sigma
+
 
 def compute_log_likelihood(data, k, pi, mu, sigma):
     num_of_rows, num_of_cols = data.shape
@@ -48,54 +51,96 @@ def compute_log_likelihood(data, k, pi, mu, sigma):
         log_likelihood += np.log(temp)
     return log_likelihood
 
-def em_gmm(data, k, num_of_trials = 5):
-    #Initialize the parameters
-    num_of_rows, num_of_cols = data.shape
-    pi = np.random.dirichlet(np.ones(k))
-    mu = np.random.rand(k, num_of_cols)
-    sigma = np.array([np.eye(num_of_cols)] * k)
-    log_likelihoods = []
-
-    best_likelihood = 0
-    best_params = {'pi': None, 'mu': None, 'sigma': None}
-
+def em_gmm(data, k, num_of_trials=5):
+    best_likelihood = -np.inf
+    best_params = None
+    all_log_likelihoods = []
     for trial in range(num_of_trials):
-        #E-Step
-        probabilities = expectation(data, k, pi, mu, sigma)
-
-        #M-Step
-        pi, mu, sigma = maximization(data, k, probabilities)
-
-        #Compute the log likelihood
+        # np.random.seed(trial)
+        pi = np.random.dirichlet(np.ones(k))
+        mu = np.random.rand(k, data.shape[1]) * (np.max(data) - np.min(data)) + np.min(data)
+        sigma = np.array([np.eye(data.shape[1]) for _ in range(k)])
+        for _ in range(10):  # Assuming convergence within 10 iterations
+            probabilities = expectation(data, k, pi, mu, sigma)
+            pi, mu, sigma = maximization(data, k, probabilities)
         log_likelihood = compute_log_likelihood(data, k, pi, mu, sigma)
-        log_likelihoods.append(log_likelihood)
         if log_likelihood > best_likelihood:
             best_likelihood = log_likelihood
-            best_params['pi'] = pi
-            best_params['mu'] = mu
-            best_params['sigma'] = sigma
+            best_params = (pi, mu, sigma)
+        all_log_likelihoods.append(log_likelihood)
+    # np.random.seed(42)
+    print(best_likelihood)
+    return best_params, best_likelihood, all_log_likelihoods
 
-    return best_params, best_likelihood
 
 
 
-def best_k(data):
-    k_range = range(3, 9)
-    log_likelihoods = []
-    for k in k_range:
-        params, log_likelihood = em_gmm(data, k)
-        log_likelihoods.append(log_likelihood)
+# Plot the best value of convergence log-likelihood against the value of K
+def plot_log_likelihood(log_likelihood, save_path=None):
+    plt.plot(log_likelihood, marker='o')
+    plt.title('Convergence Log-Likelihood')
+    plt.xlabel('Number of Iterations')
+    plt.ylabel('Log-Likelihood')
+    if save_path:
+        plt.savefig(save_path)
+    plt.show()
+
+
     
-    plt.plot(k_range, log_likelihoods, marker='o')
+def best_k(data, filename):
+    k_range = range(3, 9)
+    all_log_likelihoods = []
+    all_params = []
+    for k in k_range:
+        params, best_log_likelihood, log_likelihoods = em_gmm(data, k)
+        all_log_likelihoods.append(best_log_likelihood)
+        all_params.append(params)
+        # path = filename+'_log_likelihood_'+str(k)+'.png'
+        # plot_log_likelihood(log_likelihoods, path)
+    
+    fig_name = filename+ ' log_likelihood_vs_K.png'
+    plt.plot(k_range, all_log_likelihoods, marker='o')
     plt.title('Convergence Log-Likelihood vs. K')
     plt.xlabel('Number of Components (K)')
     plt.ylabel('Log-Likelihood')
-    plt.savefig('log_likelihood_vs_K.png')
+    plt.savefig(fig_name)
     plt.show()
 
-    k_best = k_range[np.argmax(log_likelihoods)]
-    best_params, best_log_likelihood = em_gmm(data, k_best)
+    # k_best = k_range[np.argmax(all_log_likelihoods)]
+    # print('Best value of K: ', k_best)
+
+    # params, best_log_likelihood, log_likelihoods = em_gmm(data, k_best)
+    # plot_gmm(data, k_best, params, filename+'_gmm.png')
+
+    #for each value of k, plot the estimated GMM for K by showing sample data points and Gaussian distributions in a 2D plot.
+    for k in k_range:
+        params = all_params[k-3]
+        plot_gmm(data, k, params, filename+'_gmm_'+str(k)+'.png', filename)
+
     
+
+#plot the estimated GMM for K’ by showing sample data points and Gaussian distributions in a 2D plot.   
+def plot_gmm(data, k, params, save_path=None, title=None):
+    num_of_rows, num_of_cols = data.shape
+    trial_probabilities = np.zeros((num_of_rows, k))
+    pi, mu, sigma = params
+    for i in range(10):
+        trial_probabilities += expectation(data, k, pi, mu, sigma)
+    probabilities = trial_probabilities / np.sum(trial_probabilities, axis=1)[:, np.newaxis]
+    cluster_assignments = np.argmax(probabilities, axis=1)
+
+    # print(cluster_assignments.shape)
+    # print(cluster_assignments[5:10])
+    plt.figure(figsize=(10, 10))
+
+    
+    plt.scatter(data[:, 0], data[:, 1], c=cluster_assignments)
+    plt.title('Estimated GMM for k= '+str(k)+'\n'+title)
+    plt.xlabel('Principal Axis 1')
+    plt.ylabel('Principal Axis 2')
+    if save_path:
+        plt.savefig(save_path)
+    plt.show()
 
 
 def plot_data(data, title, save_path=None):
@@ -113,8 +158,14 @@ def plot_data(data, title, save_path=None):
 def pca(df):
     U, S, V = np.linalg.svd(df, full_matrices=False)
     transformed_df = np.dot(df, V.T)
+    #take first two columns
+    transformed_df = transformed_df[:, :2]
     return transformed_df
 
+
+#read the filename from the command line
+import sys
+# data_file = sys.argv[1]
 data_file = "2D_data_points_2.txt"
 D = np.loadtxt(data_file, delimiter=',')
 
@@ -134,3 +185,11 @@ transformed_df = pca(df) if num_cols > 2 else df
 image_name = data_file[:-4]
 image_name += '_pca.png'
 plot_data(transformed_df, 'Transformed Data', image_name)
+
+print(transformed_df.shape)
+
+#reshape the data to 2D
+if num_cols <= 2:
+    transformed_df = transformed_df.to_numpy()
+
+best_k(transformed_df, data_file[:-4])
